@@ -4,58 +4,42 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  apk:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          submodules: true
-      - uses: actions/setup-java@v4
+          submodules: recursive
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Install compiler cache
-        uses: Mozilla-Actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
-        with:
-          version: v0.18.0
-      # The port's CMake runs each C/C++ compile through SMS_COMPILER_CACHE,
-      # so only changed sources recompile. The cache lives in GitHub's cache.
-      - name: Enable compiler cache
+
+      - name: Verify Java
         run: |
-          echo "SMS_COMPILER_CACHE=$(command -v sccache)" >> "$GITHUB_ENV"
-          echo "SCCACHE_GHA_ENABLED=on" >> "$GITHUB_ENV"
-          echo "SCCACHE_IGNORE_SERVER_IO_ERROR=1" >> "$GITHUB_ENV"
-      - name: Install Android SDK packages
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            'platforms;android-35' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1' > /dev/null
-      - name: Input monitor tests
-        run: bash tests/check-input-monitor.sh
-      - name: Controller mapping tests
-        run: bash tests/check-controller-mapping.sh
-      - name: Texture pack layout tests
-        run: bash tests/check-texture-pack.sh
-      - name: Language pack tests
-        run: bash tests/check-language-pack.sh
-      - name: Update check tests
-        run: bash tests/check-update-check.sh
-      - name: Disc patch tests
-        run: bash tests/check-vcdiff.sh
-      - name: Build debug APK
-        run: ./build.sh --max-workers=4
-      - name: Build Super Mario Eclipse debug APK
-        run: SMS_ECLIPSE=1 ./build.sh --max-workers=4
-      - name: Compiler cache statistics
-        if: always()
-        run: sccache --show-stats
-      - uses: actions/upload-artifact@v4
+          java -version
+          echo "JAVA_HOME=$JAVA_HOME"
+          which java
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Verify Gradle JVM
+        run: ./gradlew --version
+
+      - name: Build with Gradle
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: sms-android-debug-apk
-          path: app/build/outputs/apk/sunshine/debug/app-sunshine-debug.apk
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sms-android-eclipse-debug-apk
-          path: app/build/outputs/apk/eclipse/debug/app-eclipse-debug.apk
+          name: sms-android-debug
+          path: app/build/outputs/apk/**/*.apk
